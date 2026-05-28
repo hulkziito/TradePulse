@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TradePulse · Mood-first Trading Journal</title>
 <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.17.0/dist/tabler-icons.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --bg: #FAFAF7;
@@ -407,6 +408,76 @@
     .trade-row { grid-template-columns: 6px 1fr auto; }
     .trade-time { display: none; }
   }
+  /* === AUTH === */
+  .auth-btn {
+    background: var(--text);
+    color: var(--bg);
+    border: none;
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .auth-btn:hover { opacity: 0.9; }
+  .user-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface-2);
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    font-size: 13px;
+  }
+  .user-badge .email {
+    max-width: 140px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .auth-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 1rem;
+    border-bottom: 0.5px solid var(--border);
+  }
+  .auth-tab {
+    padding: 10px 14px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 14px;
+    color: var(--text-2);
+    cursor: pointer;
+    font-family: inherit;
+    flex: 1;
+  }
+  .auth-tab.active {
+    border-bottom-color: var(--text);
+    color: var(--text);
+    font-weight: 500;
+  }
+  .auth-form { display: none; }
+  .auth-form.active { display: block; }
+  .auth-form input { margin-bottom: 10px; }
+  .auth-msg {
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    margin-bottom: 12px;
+    display: none;
+  }
+  .auth-msg.show { display: block; }
+  .auth-msg.error { background: var(--revenge-bg); color: var(--revenge-text); }
+  .auth-msg.success { background: var(--calm-bg); color: var(--calm-text); }
+  @media (max-width: 600px) {
+    .user-badge .email { max-width: 90px; }
+    .auth-btn span { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -435,6 +506,17 @@
       <button class="btn-icon" id="export-btn" title="Exportar dados JSON"><i class="ti ti-download"></i></button>
       <button class="btn-icon" id="import-btn" title="Importar dados"><i class="ti ti-upload"></i></button>
       <input type="file" id="import-file" accept=".json" style="display:none">
+      <button class="auth-btn" id="auth-open-btn">
+        <i class="ti ti-user"></i>
+        <span>Entrar</span>
+      </button>
+      <div class="user-badge" id="user-badge" style="display:none">
+        <i class="ti ti-user-check" style="color:var(--calm)"></i>
+        <span class="email" id="user-email"></span>
+        <button class="btn-icon" id="logout-btn" title="Sair" style="padding:4px 6px; border:none">
+          <i class="ti ti-logout"></i>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -596,8 +678,145 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="auth-modal">
+  <div class="modal">
+    <p class="modal-title" style="margin:0 0 16px">Entrar na tua conta</p>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-authtab="login">Entrar</button>
+      <button class="auth-tab" data-authtab="signup">Criar conta</button>
+    </div>
+
+    <div class="auth-msg error" id="auth-error"></div>
+    <div class="auth-msg success" id="auth-success"></div>
+
+    <div class="auth-form active" id="form-login">
+      <input type="email" id="login-email" placeholder="Email" autocomplete="email">
+      <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+      <button class="btn-primary" id="btn-login" style="margin:0">Entrar</button>
+    </div>
+
+    <div class="auth-form" id="form-signup">
+      <input type="email" id="signup-email" placeholder="Email" autocomplete="email">
+      <input type="password" id="signup-password" placeholder="Password (mín. 6 caracteres)" autocomplete="new-password">
+      <button class="btn-primary" id="btn-signup" style="margin:0">Criar conta</button>
+      <p style="font-size:11px; color:var(--text-2); margin:10px 0 0; text-align:center">
+        Ao registar-te, aceitas que guardemos o teu email para autenticação.
+      </p>
+    </div>
+
+    <button class="btn-secondary" id="auth-close" style="width:100%; margin-top:12px">Cancelar</button>
+  </div>
+</div>
+
 <script>
 (function() {
+  // ============ SUPABASE AUTH ============
+  const SUPABASE_URL = 'https://qjctjevvzpcspqycyays.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_gxVpjNJ04AdZ2AkjYZZHRQ_YwUhlJxO';
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  let currentUser = null;
+
+  async function checkAuthSession() {
+    const { data: { session } } = await supabase.auth.getSession();
+    currentUser = session?.user || null;
+    updateAuthUI();
+  }
+  function updateAuthUI() {
+    const authBtn = document.getElementById('auth-open-btn');
+    const userBadge = document.getElementById('user-badge');
+    const emailEl = document.getElementById('user-email');
+    if (currentUser) {
+      authBtn.style.display = 'none';
+      userBadge.style.display = 'flex';
+      emailEl.textContent = currentUser.email;
+    } else {
+      authBtn.style.display = 'flex';
+      userBadge.style.display = 'none';
+    }
+  }
+  function showAuthError(msg) {
+    const el = document.getElementById('auth-error');
+    el.textContent = msg;
+    el.classList.add('show');
+    document.getElementById('auth-success').classList.remove('show');
+  }
+  function showAuthSuccess(msg) {
+    const el = document.getElementById('auth-success');
+    el.textContent = msg;
+    el.classList.add('show');
+    document.getElementById('auth-error').classList.remove('show');
+  }
+  function clearAuthMsgs() {
+    document.getElementById('auth-error').classList.remove('show');
+    document.getElementById('auth-success').classList.remove('show');
+  }
+
+  document.getElementById('auth-open-btn').addEventListener('click', () => {
+    clearAuthMsgs();
+    document.getElementById('auth-modal').classList.add('show');
+  });
+  document.getElementById('auth-close').addEventListener('click', () => {
+    document.getElementById('auth-modal').classList.remove('show');
+  });
+
+  document.querySelectorAll('.auth-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('form-' + tab.dataset.authtab).classList.add('active');
+      clearAuthMsgs();
+    });
+  });
+
+  document.getElementById('btn-login').addEventListener('click', async () => {
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    if (!email || !password) { showAuthError('Preenche email e password.'); return; }
+    const btn = document.getElementById('btn-login');
+    btn.disabled = true; btn.textContent = 'A entrar...';
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    btn.disabled = false; btn.textContent = 'Entrar';
+    if (error) { showAuthError(error.message); return; }
+    currentUser = data.user;
+    updateAuthUI();
+    document.getElementById('auth-modal').classList.remove('show');
+  });
+
+  document.getElementById('btn-signup').addEventListener('click', async () => {
+    const email = document.getElementById('signup-email').value.trim();
+    const password = document.getElementById('signup-password').value;
+    if (!email || !password) { showAuthError('Preenche email e password.'); return; }
+    if (password.length < 6) { showAuthError('Password tem de ter no mínimo 6 caracteres.'); return; }
+    const btn = document.getElementById('btn-signup');
+    btn.disabled = true; btn.textContent = 'A criar...';
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    btn.disabled = false; btn.textContent = 'Criar conta';
+    if (error) { showAuthError(error.message); return; }
+    if (data.user) {
+      currentUser = data.user;
+      updateAuthUI();
+      showAuthSuccess('Conta criada com sucesso! Já estás dentro.');
+      setTimeout(() => document.getElementById('auth-modal').classList.remove('show'), 1500);
+    }
+  });
+
+  document.getElementById('logout-btn').addEventListener('click', async () => {
+    if (!confirm('Sair da conta?')) return;
+    await supabase.auth.signOut();
+    currentUser = null;
+    updateAuthUI();
+  });
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    currentUser = session?.user || null;
+    updateAuthUI();
+  });
+
+  checkAuthSession();
+  // ============ FIM AUTH ============
+
   const STORAGE_KEY = 'tradepulse:trades:v1';
   const moodLabels = { calm:'Calmo', confident:'Confiante', anxious:'Ansioso', fomo:'FOMO', revenge:'Revenge' };
   const moodIcons = { calm:'ti-zen', confident:'ti-mood-smile', anxious:'ti-mood-nervous', fomo:'ti-flame', revenge:'ti-bolt' };
