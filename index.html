@@ -398,16 +398,6 @@
     color: var(--text-3);
     font-size: 12px;
   }
-  @media (max-width: 600px) {
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
-    .moods { grid-template-columns: repeat(3, 1fr); }
-    .form-row.cols-3 { grid-template-columns: 1fr; }
-    .form-row.cols-4 { grid-template-columns: 1fr 1fr; }
-    .heatmap-grid { grid-template-columns: repeat(3, 1fr); }
-    .badges-grid { grid-template-columns: repeat(2, 1fr); }
-    .trade-row { grid-template-columns: 6px 1fr auto; }
-    .trade-time { display: none; }
-  }
   /* === AUTH === */
   .auth-btn {
     background: var(--text);
@@ -475,6 +465,14 @@
   .auth-msg.error { background: var(--revenge-bg); color: var(--revenge-text); }
   .auth-msg.success { background: var(--calm-bg); color: var(--calm-text); }
   @media (max-width: 600px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .moods { grid-template-columns: repeat(3, 1fr); }
+    .form-row.cols-3 { grid-template-columns: 1fr; }
+    .form-row.cols-4 { grid-template-columns: 1fr 1fr; }
+    .heatmap-grid { grid-template-columns: repeat(3, 1fr); }
+    .badges-grid { grid-template-columns: repeat(2, 1fr); }
+    .trade-row { grid-template-columns: 6px 1fr auto; }
+    .trade-time { display: none; }
     .user-badge .email { max-width: 90px; }
     .auth-btn span { display: none; }
   }
